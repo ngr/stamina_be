@@ -1,0 +1,26 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "results"
+
+Resources:
+
+  ResultsDynamoTable:
+    Type: "AWS::DynamoDB::Table"
+    Properties:
+      TableName: "results"
+      AttributeDefinitions:
+        - AttributeName: 'user_id'
+          AttributeType: 'S'
+        - AttributeName: 'created_at'
+          AttributeType: 'N'
+      KeySchema:
+        - AttributeName: 'user_id'
+          KeyType: "HASH"
+        - AttributeName: 'created_at'
+          KeyType: "RANGE"
+
+      BillingMode: PAY_PER_REQUEST
+
+      Tags:
+      -
+        Key: 'Environment'
+        Value: 'production'

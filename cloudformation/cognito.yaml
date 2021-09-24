@@ -1,0 +1,198 @@
+################################################################################################
+# Cognito UserPool, User Pool Client, User Pool Domain, User Pool Identity Provider (Google).  #
+# Please deploy this after sys_cognito_pre_signup lambda.                                      #
+################################################################################################
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "CF for Cognito"
+
+Parameters:
+  UserPoolName:
+    Type: String
+    Default: "stamina-be"
+
+  StaminaLoginUrl:
+    Type: String
+    Default: "https://stamina.work/login/"
+    Description: "The default URL cognito redirects to after log-in. Must start with 'https://'. (and therefore won't work on dev until we use https in our dev)"
+
+  CallbackURLs:
+    Type: String
+    Default: "https://stamina.work/login/*https://stamina.work/"
+    Description: "URLs that cognito can redirect to, separated by '*'"
+
+  StaminaCognitoDomain:
+    Type: String
+    Description: "This will be part of the Stamina hosted UI URL. Must be unique (like s3 bucket name). Use stamina-be for prod and stamina-be-dev for dev."
+
+  GoogleClientId:
+    Type: String
+    Default: "<...>.apps.googleusercontent.com"
+    Description: "Google developers console > credentials > OAuth 2.0 > (Create / Choose existing) > Client ID. Must use different credentials for every authentication source."
+
+  GoogleClientSecret:
+    Type: String
+    Description: "Google developers console > credentials > OAuth 2.0 > (Create / Choose existing) > Client secret. Must use different credentials for every authentication source."
+
+Resources:
+  StaminaUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+#      AccountRecoverySetting:
+#        AccountRecoverySetting
+#      AdminCreateUserConfig:
+#        AdminCreateUserConfig
+#      AliasAttributes:
+#        - String
+#      AutoVerifiedAttributes:
+#        - String
+#      DeviceConfiguration:
+#        DeviceConfiguration
+#      EmailConfiguration:
+#        EmailConfiguration
+#      EmailVerificationMessage: String
+#      EmailVerificationSubject: String
+#      EnabledMfas:
+#        - String
+      LambdaConfig:
+        PreSignUp: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sys_cognito_pre_signup"
+#      MfaConfiguration: String
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+          TemporaryPasswordValidityDays: 7
+      Schema:
+        - AttributeDataType: String
+          Mutable: true
+          Name: email
+          Required: true
+        - AttributeDataType: String
+          Mutable: true
+          Name: name
+          Required: true
+        - AttributeDataType: String
+          Mutable: true
+          Name: family_name
+          Required: true
+#      SmsAuthenticationMessage: String
+#      SmsConfiguration:
+#        SmsConfiguration
+#      SmsVerificationMessage: String
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+#      UserPoolAddOns:
+#        UserPoolAddOns
+      UserPoolName: !Ref UserPoolName
+#      UserPoolTags:
+#        - Environment: 'production'
+#      VerificationMessageTemplate:
+#        VerificationMessageTemplate
+
+
+  StaminaUserPoolClient:
+    DependsOn: StaminaUserPool
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+        - aws.cognito.signin.user.admin
+#      AnalyticsConfiguration:
+#        AnalyticsConfiguration
+      CallbackURLs: !Split [ "*", !Ref CallbackURLs ]
+      ClientName: stamina-be-client
+      DefaultRedirectURI: !Ref StaminaLoginUrl
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_CUSTOM_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      GenerateSecret: true
+      LogoutURLs: !Split [ "*", !Ref CallbackURLs ]
+      PreventUserExistenceErrors: ENABLED
+#      ReadAttributes:
+#        - String
+      RefreshTokenValidity: 30
+      SupportedIdentityProviders:
+        - Google
+      UserPoolId: !Ref StaminaUserPool
+      WriteAttributes:
+        - email
+        - name
+        - family_name
+
+
+  # Cognito app-client for username & password login.
+  # Since Cognito sucks, it won't allow username & password auth flow if the app-client has a secret.
+  # The solution is to create a separate app-client for backed service cognito users.
+  # https://stackoverflow.com/questions/37438879/unable-to-verify-secret-hash-for-client-in-amazon-cognito-userpools
+  StaminaUserPoolBotClient:
+    DependsOn: StaminaUserPool
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      AllowedOAuthFlows:
+        - implicit
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+        - aws.cognito.signin.user.admin
+      CallbackURLs:
+        - !Ref StaminaLoginUrl
+      ClientName: stamina-be-bot-client
+      DefaultRedirectURI: !Ref StaminaLoginUrl
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_CUSTOM_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      GenerateSecret: false
+      LogoutURLs:
+        - !Ref StaminaLoginUrl
+      PreventUserExistenceErrors: ENABLED
+      RefreshTokenValidity: 30
+      UserPoolId: !Ref StaminaUserPool
+      WriteAttributes:
+        - email
+        - name
+        - family_name
+
+
+  StaminaUserPoolDomain:
+    DependsOn: StaminaUserPool
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref UserPoolName
+      UserPoolId: !Ref StaminaUserPool
+
+
+  StaminaUserPoolIdp:
+    DependsOn: StaminaUserPool
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      AttributeMapping:
+        email: email
+        name: name
+        family_name: family_name
+#      IdpIdentifiers:
+#        - String
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: "profile email openid"
+      ProviderName: Google
+      ProviderType: Google
+      UserPoolId: !Ref StaminaUserPool
