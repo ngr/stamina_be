@@ -6,7 +6,7 @@ students to keep track of their training progress and evolve beyond limits.
 
 All the code of ``stamina_be`` is Open Source and protected by the MIT license.
 
-Some tech documentation [here](docs).
+Read more documentation: [https://stamina-be.readthedocs.io/](https://stamina-be.readthedocs.io/en/latest/).
 
 Authors
 ---

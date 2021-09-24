@@ -15,5 +15,9 @@ Initial architecture of the back-end application:
     :align: center
 
 
+Links
+-----
+..  _stamina-be: _https://github.com/ngr/stamina_be
+
 ..  _stamina: https://stamina.com/
 ..  _staminaon: https://staminaon.com/
