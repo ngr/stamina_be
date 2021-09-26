@@ -1,0 +1,290 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "www_commit"
+
+Conditions:
+  isRootAccount: !Equals [ !Sub "${AWS::AccountId}", "737060422660"]
+
+Resources:
+
+  LambdaWwwCommitRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - "lambda.amazonaws.com"
+          Action:
+          - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Sub "arn:aws:iam::${AWS::AccountId}:policy/Exec-Default-Lambda"
+        - !Sub "arn:aws:iam::${AWS::AccountId}:policy/Default-Lambda-VPC"
+      Policies:
+      - PolicyName: "WwwCommitPermissions"
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+          - Effect: "Allow"
+            Action: "dynamodb:Query"
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/config"
+          - Effect: "Allow"
+            Action: "dynamodb:PutItem"
+            Resource: !ImportValue "ddb-results"
+
+      RoleName: "lambda_www_commit"
+
+  LambdaWwwCommit:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code:
+        S3Bucket: !Sub "app-control-${AWS::AccountId}"
+        S3Key: "lambdas/www_commit.zip"
+      Description: "ABS. CloudFormation managed. www_commit description."
+      FunctionName: "www_commit"
+      Handler: "app.lambda_handler"
+      MemorySize: 796
+      Role: !GetAtt LambdaWwwCommitRole.Arn
+      Runtime: "python3.8"
+      Timeout: 30
+      Tags:
+       -
+         Key: 'Environment'
+         Value: 'production'
+       -
+         Key: 'Pattern'
+         Value: 'apigw_empty'
+
+       -
+         Key: 'Maintainer'
+         Value: 'Nikolay Grishchenko'
+
+
+      TracingConfig:
+        Mode: "Active"
+
+#      Layers:
+#        - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:sosw:LATEST_SOSW_VERSION_PLACEHOLDER"
+#        - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:aws_xray_sdk:LATEST_XRAY_VERSION_PLACEHOLDER"
+
+
+
+###################
+### API Gateway ###
+###################
+
+## API Gateway itself
+#  WwwCommitApi:
+#    Type: AWS::ApiGateway::RestApi
+#    Properties:
+#      Name: www_commit
+#      Description: API used for Geo-location resolving by IP
+#      FailOnWarnings: true
+#      EndpointConfiguration:
+#        Types:
+#          - REGIONAL   # For a regional API and its custom domain name.
+##          - EDGE      # For an edge-optimized API and its custom domain name.
+##          - PRIVATE   # For a private API and its custom domain name.
+#
+
+## Permissions for API GW to invoke lambda
+#  LambdaWwwCommitApiGwPermission:
+#    Type: AWS::Lambda::Permission
+#    Properties:
+#      Action: lambda:invokeFunction
+#      FunctionName:
+#        Fn::GetAtt:
+#        - LambdaWwwCommit
+#        - Arn
+#      Principal: apigateway.amazonaws.com
+#      SourceArn:
+#        Fn::Join:
+#        - ''
+#        - - 'arn:aws:execute-api:'
+#          - Ref: AWS::Region
+#          - ":"
+#          - Ref: AWS::AccountId
+#          - ":"
+#          - Ref: WwwCommitApi
+#          - "/*"
+##
+#  WwwCommitApiCloudWatchLogsRole:
+#    Type: AWS::IAM::Role
+#    Properties:
+#      AssumeRolePolicyDocument:
+#        Version: '2012-10-17'
+#        Statement:
+#        - Effect: Allow
+#          Principal:
+#            Service:
+#            - apigateway.amazonaws.com
+#          Action:
+#          - sts:AssumeRole
+#      Policies:
+#      - PolicyName: WwwCommitApiLogsPolicy
+#        PolicyDocument:
+#          Version: '2012-10-17'
+#          Statement:
+#          - Effect: Allow
+#            Action:
+#            - logs:CreateLogGroup
+#            - logs:CreateLogStream
+#            - logs:DescribeLogGroups
+#            - logs:DescribeLogStreams
+#            - logs:PutLogEvents
+#            - logs:GetLogEvents
+#            - logs:FilterLogEvents
+#            Resource: "*"
+
+#  WwwCommitApiGatewayAccount:
+#    Type: AWS::ApiGateway::Account
+#    Properties:
+#      CloudWatchRoleArn:
+#        Fn::GetAtt:
+#        - WwwCommitApiCloudWatchLogsRole
+#        - Arn
+
+# Stages of deployment.
+# Please note that they will deployed only during initial installation.
+# After that if you change anything in API Gateway configuration, you first deploy changes to API GW resourses
+# with CloudFormation, then run manually (or with some helper) new Stage deployment in API Gateway.
+#  WwwCommitProdApiStage:
+#    DependsOn:
+#    - WwwCommitApiGatewayAccount
+#    Type: AWS::ApiGateway::Stage
+#    Properties:
+#      DeploymentId:
+#        Ref: WwwCommitApiDeployment
+#      MethodSettings:
+#      - DataTraceEnabled: true
+#        HttpMethod: "*"
+#        LoggingLevel: INFO
+#        ResourcePath: "/*"
+#      RestApiId:
+#        Ref: WwwCommitApi
+#      StageName: LATEST
+
+#  WwwCommitApiDeployment:
+#    Type: AWS::ApiGateway::Deployment
+#    DependsOn:
+#    - WwwCommitRequest
+#    Properties:
+#      RestApiId:
+#        Ref: WwwCommitApi
+#      StageName: prod
+
+# The API Gateway parts. First comes the Resource.
+#  WwwCommitResource:
+#    Type: AWS::ApiGateway::Resource
+#    Properties:
+#      RestApiId:
+#        Ref: WwwCommitApi
+#      ParentId:
+#        Fn::GetAtt:
+#        - WwwCommitApi
+#        - RootResourceId
+#      PathPart: hello
+
+## You can also support Proxy resource if you really need, but use wisely. And you Lambda should support it then.
+#  WwwCommitProxyResource:
+#    Type: AWS::ApiGateway::Resource
+#    Properties:
+#      RestApiId:
+#        Ref: WwwCommitApi
+#      ParentId:
+#        Ref: WwwCommitResource
+#      PathPart: '{proxy+}'
+
+# The Request Method. This example is configured for Lambda_proxy (has nothing to do with resource-proxy).
+# In this case not input/output object mapping or mutation is performed by API Gateway.
+# All the data transformation logic should be in the Lambda.
+#  WwwCommitRequest:
+#    DependsOn: LambdaWwwCommitApiGwPermission
+#    Type: AWS::ApiGateway::Method
+#    Properties:
+#      AuthorizationType: NONE
+#      HttpMethod: GET
+#      Integration:
+#        Type: AWS_PROXY
+#        IntegrationHttpMethod: POST
+#        Uri:
+#          Fn::Join:
+#          - ''
+#          - - 'arn:aws:apigateway:'
+#            - Ref: AWS::Region
+#            - ":lambda:path/2015-03-31/functions/"
+#            - Fn::GetAtt:
+#              - LambdaWwwCommit
+#              - Arn
+#            - "/invocations"
+#        IntegrationResponses:
+#          - StatusCode: 200
+#          - StatusCode: 404
+#          - StatusCode: 500
+#      MethodResponses:
+#        -
+#          StatusCode: 200
+#          ResponseModels:
+#            application/json: Empty
+#        -
+#          StatusCode: 404
+#        -
+#          StatusCode: 500
+#      ResourceId:
+#        Ref: WwwCommitResource
+#      RestApiId:
+#        Ref: WwwCommitApi
+#
+## And here are the Request Methods for the proxy resource.
+## Proxy resource must support ANY HTTP methods according to AWS requirements.
+#  WwwCommitProxyRequest:
+#    DependsOn: LambdaWwwCommitApiGwPermission
+#    Type: AWS::ApiGateway::Method
+#    Properties:
+#      AuthorizationType: NONE
+#      HttpMethod: ANY
+#
+#      RequestParameters:
+#        method.request.path.proxy: true
+#
+#      Integration:
+#        Type: AWS_PROXY
+#        IntegrationHttpMethod: POST
+#        Uri:
+#          Fn::Join:
+#          - ''
+#          - - 'arn:aws:apigateway:'
+#            - Ref: AWS::Region
+#            - ":lambda:path/2015-03-31/functions/"
+#            - Fn::GetAtt:
+#              - LambdaWwwCommit
+#              - Arn
+#            - "/invocations"
+#        IntegrationResponses:
+#          - StatusCode: 200
+#          - StatusCode: 404
+#          - StatusCode: 500
+#
+#        CacheKeyParameters:
+#          - 'method.request.path.proxy'
+#        RequestParameters:
+#          integration.request.path.proxy: 'method.request.path.proxy'
+#
+#      MethodResponses:
+#        -
+#          StatusCode: 200
+#          ResponseModels:
+#            application/json: Empty
+#        -
+#          StatusCode: 404
+#        -
+#          StatusCode: 500
+#      ResourceId:
+#        Ref: WwwCommitProxyResource
+#      RestApiId:
+#        Ref: WwwCommitApi
+
+#######################
+# End of API Gateway :)
